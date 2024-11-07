@@ -8,6 +8,7 @@ from typing import List, Dict, Union
 import re
 import subprocess
 from dotenv import load_dotenv
+import datetime
 
 load_dotenv()
 
@@ -314,8 +315,9 @@ def main():
     # Initialize optimizer
     optimizer = ResumeProjectOptimizer(api_key)
 
-    # Define path for job description
+    # Define paths
     job_desc_path = 'src/job_description.txt'
+    output_path = 'output/output.json'
 
     # Check if job description file exists
     if not os.path.exists(job_desc_path):
@@ -329,30 +331,45 @@ def main():
         return
 
     try:
+        # Load and analyze job description
         job_description = optimizer.load_job_description(job_desc_path)
         print("\nJob description loaded successfully!")
-        print(f"Length: {len(job_description)} characters")
         
-        # Extract skills and rank projects
+        # Extract skills
+        relevant_skills = optimizer.extract_relevant_skills(job_description)
+        
+        # Rank projects
         print("\nAnalyzing projects for best match...")
         ranked_projects = optimizer.rank_projects(job_description)
         
-        print("\nTop 3 projects selected:")
-        for proj in ranked_projects:
-            print(f"\n- {proj['project_id']}")
-            print(f"  Score: {proj['relevance_score']}")
-            print(f"  Reason: {proj['reason']}")
-            print(f"  Adaptation: {proj['adaptation_suggestions']}")
+        # Prepare output data
+        output_data = {
+            "analysis_timestamp": datetime.datetime.now().isoformat(),
+            "job_description_length": len(job_description),
+            "skill_analysis": relevant_skills,
+            "ranked_projects": ranked_projects,
+            "job_description": job_description
+        }
+        
+        # Save to output.json
+        with open(output_path, 'w', encoding='utf-8') as f:
+            json.dump(output_data, f, indent=2, ensure_ascii=False)
+            
+        print(f"\nAnalysis results saved to {output_path}")
 
-        # Update LaTeX
-        optimizer.update_latex_file(ranked_projects)
-
-        # Compile PDF
-        optimizer.compile_pdf()
+        # # Update LaTeX and compile PDF
+        # optimizer.update_latex_file(ranked_projects)
+        # optimizer.compile_pdf()
         
         print("\nDone! Your resume has been updated and recompiled.")
         
     except Exception as e:
+        error_data = {
+            "error": str(e),
+            "timestamp": datetime.datetime.now().isoformat()
+        }
+        with open(output_path, 'w', encoding='utf-8') as f:
+            json.dump(error_data, f, indent=2)
         print(f"Error: {str(e)}")
         return
 
