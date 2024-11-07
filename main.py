@@ -141,6 +141,8 @@ class ResumeProjectOptimizer:
         - Reason why it's important for the role
         - Whether it's explicit or implicit
         
+        IMPORTANT: Respond with raw JSON only, no markdown formatting, no code blocks.
+
         Return as structured JSON with this exact format:
         {{
             "explicit_skills": [
@@ -168,7 +170,7 @@ class ResumeProjectOptimizer:
         try:
             print("Sending request to GPT...")
             response = self.client.chat.completions.create(
-                model="gpt-4",
+                model="gpt-4-turbo", #  gpt-4 is nice but pretty expensive (use gpt-4o-mini for testing)
                 messages=[
                     {"role": "system", "content": "You are an expert ATS system analyzer that helps optimize resumes for job applications."},
                     {"role": "user", "content": prompt}
@@ -178,8 +180,8 @@ class ResumeProjectOptimizer:
 
             print("\nReceived response from GPT")
             result = response.choices[0].message.content
-            print("\nGPT Response:")
-            print(result)
+            # print("\nGPT Response:")
+            # print(result)
 
             print("\nAttempting to parse JSON...")
             parsed_json = json.loads(result)
@@ -227,6 +229,8 @@ class ResumeProjectOptimizer:
             4. demonstrated_skills (list of specific skills from the analysis that this project demonstrates)
             5. adaptation_suggestions (brief suggestions on how to emphasize certain aspects of this project for this specific job)
 
+            IMPORTANT: Respond with raw JSON only, no markdown formatting, no code blocks.
+
             Format as valid JSON:
             [{{
                 "project_id": "...",
@@ -239,7 +243,7 @@ class ResumeProjectOptimizer:
 
             print("\nSending project ranking request to GPT...")
             response = self.client.chat.completions.create(
-                model="gpt-4",
+                model="gpt-4-turbo",
                 messages=[
                     {"role": "system", "content": "You are a professional resume optimizer that helps match projects to job requirements."},
                     {"role": "user", "content": prompt}
@@ -248,8 +252,7 @@ class ResumeProjectOptimizer:
 
             print("\nReceived project ranking response")
             result = response.choices[0].message.content
-            print("\nGPT Response for ranking:")
-            print(result)
+            # print("\nGPT Response for ranking:")
             
             print("\nParsing ranking JSON...")
             parsed_json = json.loads(result)
