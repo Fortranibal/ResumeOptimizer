@@ -27,57 +27,36 @@ class ResumeProjectOptimizer:
             api_key (str): OpenAI API key for authentication
         """
         self.client = OpenAI(api_key=api_key)
-        self.projects = self.load_projects(Path('src/projects.tex'))
+        self.projects = self.load_projects(Path('src/projects.json'))
+        self.skills = self.load_skills(Path('src/skills.json'))
 
     def load_projects(self, filepath: str) -> List[Dict]:
         """
-        Load and parse projects from a LaTeX file.
+        Load and parse projects from a JSON file.
         
         Args:
-            filepath (str): Path to the LaTeX file containing project definitions
+            filepath (str): Path to the JSON file containing project definitions
             
         Returns:
             List[Dict]: A list of project dictionaries containing project details
         """
         with open(filepath, 'r') as f:
-            content = f.read()
-
-        # Regular expression to match project definitions
-        project_pattern = r'\\newcommand{\\project([^}]+)}{([^}]+)}'
-        projects = []
-
-        for match in re.finditer(project_pattern, content, re.DOTALL):
-            project_id = match.group(1)  # e.g., 'RH', 'WSPR'
-            project_content = match.group(2)
-
-            # Extract title
-            title_match = re.search(r'\\textbf{([^}]+)}', project_content)
-            title = title_match.group(1) if title_match else ""
-
-            # Extract description
-            description_match = re.search(r'\\begin{onecolentry}\s*([^}]+?)\\end{onecolentry}', 
-                                       project_content, re.DOTALL)
-            description = description_match.group(1).strip() if description_match else ""
-
-            # Extract GitHub link if present
-            github_match = re.search(r'\\href{([^}]+)}', project_content)
-            github = github_match.group(1) if github_match else None
-
-            # Create structured project data
-            project_data = {
-                "id": project_id,
-                "title": title,
-                "description": description,
-                "github": github,
-                "keywords": self.extract_keywords(description),
-                "technologies": self.extract_technologies(description),
-                "metrics": self.extract_metrics(description),
-                "achievements": self.extract_achievements(description)
-            }
-            
-            projects.append(project_data)
-
+            projects = json.load(f)
         return projects
+
+    def load_skills(self, filepath: str) -> Dict[str, List[str]]:
+        """
+        Load and parse skills from a JSON file.
+        
+        Args:
+            filepath (str): Path to the JSON file containing skills
+            
+        Returns:
+            Dict[str, List[str]]: Dictionary of skill categories and their skills
+        """
+        with open(filepath, 'r') as f:
+            skills = json.load(f)
+        return skills
 
     def extract_achievements(self, description: str) -> List[str]:
         """Extract achievements and outcomes from project description"""
@@ -153,90 +132,133 @@ class ResumeProjectOptimizer:
         Job Description:
         {job_description}
 
+        Candidate's Current Skills:
+        {json.dumps(self.skills, indent=2)}
+
         For each skill, provide:
         - Relevance score (0-100)
         - Reason why it's important for the role
         - Whether it's explicit or implicit
         
-        Return as JSON:
+        Return as structured JSON with this exact format:
         {{
             "explicit_skills": [
                 {{
                     "skill": "skill name",
-                    "relevance": XX,
+                    "relevance": 85,
                     "reason": "brief explanation"
                 }}
             ],
             "implicit_skills": [
                 {{
                     "skill": "skill name",
-                    "relevance": XX,
+                    "relevance": 75,
                     "reason": "brief explanation"
                 }}
             ],
             "recommended_skill_section": {{
-                "Languages": ["most relevant programming languages"],
-                "Technologies": ["most relevant tools/frameworks"],
-                "Domain Knowledge": ["most relevant domain expertise"]
+                "Languages": ["skill1", "skill2"],
+                "Technologies": ["tech1", "tech2"],
+                "Domain Knowledge": ["domain1", "domain2"]
             }}
         }}
         """
 
-        response = self.client.chat.completions.create(
-            model="gpt-4",
-            messages=[
-                {"role": "system", "content": "You are an expert ATS system analyzer that helps optimize resumes for job applications."},
-                {"role": "user", "content": prompt}
-            ]
-        )
+        try:
+            print("Sending request to GPT...")
+            response = self.client.chat.completions.create(
+                model="gpt-4",
+                messages=[
+                    {"role": "system", "content": "You are an expert ATS system analyzer that helps optimize resumes for job applications."},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.7
+            )
 
-        return json.loads(response.choices[0].message.content)
+            print("\nReceived response from GPT")
+            result = response.choices[0].message.content
+            print("\nGPT Response:")
+            print(result)
+
+            print("\nAttempting to parse JSON...")
+            parsed_json = json.loads(result)
+            print("Successfully parsed JSON")
+
+            return json.loads(response.choices[0].message.content)
+
+        except json.JSONDecodeError as e:
+            print(f"\nJSON Decode Error: {str(e)}")
+            print(f"Problematic response: {result}")
+            raise Exception("Failed to parse GPT response into valid JSON")
+        except Exception as e:
+            print(f"\nUnexpected error: {str(e)}")
+            raise
+
 
     def rank_projects(self, job_description: str) -> List[Dict]:
         """
         Rank projects based on their relevance to the job description.
         """
-        relevant_skills = self.extract_relevant_skills(job_description)
+        print("\nStarting project ranking...")
+
+        try:
+            print("Extracting relevant skills...")
+            relevant_skills = self.extract_relevant_skills(job_description)
+            print("Successfully extracted skills")
         
-        prompt = f"""
-        Given the following:
+            prompt = f"""
+            Given the following:
 
-        1. Job Description:
-        {job_description}
+            1. Job Description:
+            {job_description}
 
-        2. Identified Key Skills:
-        {json.dumps(relevant_skills, indent=2)}
+            2. Identified Key Skills:
+            {json.dumps(relevant_skills, indent=2)}
 
-        3. Projects:
-        {json.dumps(self.projects, indent=2)}
+            3. Projects:
+            {json.dumps(self.projects, indent=2)}
 
-        Return a JSON array of the top 3 most relevant projects that best demonstrate the required skills.
-        For each project include:
-        1. project_id
-        2. relevance_score (0-100)
-        3. reason (2-3 sentences explaining why this project is relevant)
-        4. demonstrated_skills (list of specific skills from the analysis that this project demonstrates)
-        5. adaptation_suggestions (brief suggestions on how to emphasize certain aspects of this project for this specific job)
+            Return a JSON array of the top 3 most relevant projects that best demonstrate the required skills.
+            For each project include:
+            1. project_id
+            2. relevance_score (0-100)
+            3. reason (2-3 sentences explaining why this project is relevant)
+            4. demonstrated_skills (list of specific skills from the analysis that this project demonstrates)
+            5. adaptation_suggestions (brief suggestions on how to emphasize certain aspects of this project for this specific job)
 
-        Format as valid JSON:
-        [{{
-            "project_id": "...",
-            "relevance_score": XX,
-            "reason": "...",
-            "demonstrated_skills": ["skill1", "skill2", "skill3"],
-            "adaptation_suggestions": "..."
-        }}]
-        """
+            Format as valid JSON:
+            [{{
+                "project_id": "...",
+                "relevance_score": XX,
+                "reason": "...",
+                "demonstrated_skills": ["skill1", "skill2", "skill3"],
+                "adaptation_suggestions": "..."
+            }}]
+            """
 
-        response = self.client.chat.completions.create(
-            model="gpt-4",
-            messages=[
-                {"role": "system", "content": "You are a professional resume optimizer that helps match projects to job requirements."},
-                {"role": "user", "content": prompt}
-            ]
-        )
+            print("\nSending project ranking request to GPT...")
+            response = self.client.chat.completions.create(
+                model="gpt-4",
+                messages=[
+                    {"role": "system", "content": "You are a professional resume optimizer that helps match projects to job requirements."},
+                    {"role": "user", "content": prompt}
+                ]
+            )
 
-        return json.loads(response.choices[0].message.content)
+            print("\nReceived project ranking response")
+            result = response.choices[0].message.content
+            print("\nGPT Response for ranking:")
+            print(result)
+            
+            print("\nParsing ranking JSON...")
+            parsed_json = json.loads(result)
+            print("Successfully parsed ranking JSON")
+            
+            return parsed_json
+        
+        except Exception as e:
+            print(f"\nError in rank_projects: {str(e)}")
+            raise
 
     def update_latex_file(self, ranked_projects: List[Dict]):
         """
