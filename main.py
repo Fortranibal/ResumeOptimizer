@@ -31,8 +31,8 @@ class ResumeProjectOptimizer:
             api_key (str): OpenAI API key for authentication
         """
         self.client = OpenAI(api_key=api_key)
-        self.projects = self.load_projects(Path('src/projects.json'))
-        self.skills = self.load_skills(Path('src/skills.json'))
+        self.projects = self.load_projects(Path('input/projects.json'))
+        self.skills = self.load_skills(Path('input/skills.json'))
 
     def load_projects(self, filepath: str) -> List[Dict]:
         """
@@ -109,7 +109,7 @@ class ResumeProjectOptimizer:
         try:
             print("Sending request to GPT...")
             response = self.client.chat.completions.create(
-                model="gpt-4-turbo", #  gpt-4 is nice but pretty expensive (use gpt-4o-mini for testing)
+                model="gpt-3.5-turbo", #  gpt-4 is nice but pretty expensive (use gpt-4o-mini for testing)
                 messages=[
                     {"role": "system", "content": "You are an expert ATS system analyzer that helps optimize resumes for job applications."},
                     {"role": "user", "content": prompt}
@@ -179,7 +179,7 @@ class ResumeProjectOptimizer:
 
             print("\nSending project ranking request to GPT...")
             response = self.client.chat.completions.create(
-                model="gpt-4-turbo",
+                model="gpt-3.5-turbo",
                 messages=[
                     {"role": "system", "content": "You are a professional resume optimizer that helps match projects to job requirements."},
                     {"role": "user", "content": prompt}
@@ -233,7 +233,7 @@ def main():
         print(f"{Fore.GREEN}✓ Resume Optimizer initialized{Style.RESET_ALL}")
 
         # Load job description
-        job_description = optimizer.load_job_description('src/job_description.txt')
+        job_description = optimizer.load_job_description('input/job_description.txt')
         print(f"{Fore.GREEN}✓ Job description loaded successfully!{Style.RESET_ALL}")
 
         print(f"\n{Fore.YELLOW}🔄 Analyzing job description...{Style.RESET_ALL}")
