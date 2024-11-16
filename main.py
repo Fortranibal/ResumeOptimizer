@@ -62,7 +62,8 @@ def main():
         optimized_projects = description_optimizer.optimize_descriptions(
             project_optimizer.projects,
             relevant_skills,
-            ranked_projects
+            ranked_projects,
+            job_description
         )
         print(f"{Fore.GREEN}✓ Descriptions optimized{Style.RESET_ALL}")
 
