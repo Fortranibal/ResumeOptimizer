@@ -1,0 +1,105 @@
+ZEROe TMS CONTROL SIMULATION SYSTEM ENGINEER (M/F)
+Apply
+Logo
+locations
+Madrid Area
+time type
+Full time
+posted on
+Posted 16 Days Ago
+job requisition id
+JR10296703
+Job Description:
+
+Would you like to participate in aeronautical Research & Technologies projects and develop your skills within a dynamic and growing company? Are you interested in taking up international challenges? Airbus Protect is a wholly-owned subsidiary of Airbus, come and join our company and boost your career within Airbus Protect! 
+
+Your future job, should you choose to accept it …
+
+As part of Airbus and to accelerate the development of a hydrogen-powered commercial Aviation, the job holder will be accountable for developing and implementing the Software & Control model for the Thermal Management System (TMS) as part of the main goal to design and integrate the cooling system of ZEROe (Fuel Cell, power electronic and other systems).
+
+This consists of defining the control laws to ensure the proper operation of the system, ensure the integration of such laws in the selected platform and to refine parameters to guarantee an optimum performance of the system.
+
+The job requires interactions with a large community of stakeholders: Airbus engineering community, Airbus subcontractors, external industrial and academic partners.
+
+Your Main Responsibilities:
+
+Development of a simulink model (control laws) in charge of the Thermal Management System.
+
+Run simulations to evaluate the validity of the different control laws proposals.
+
+Configuration and versions control of the simulink model (using Gitlab).
+
+Software Integration activities with the selected simulink platform.
+
+Support test activities and refinement of control laws.
+
+Coordination, monitoring and surveillance of outsourced activities.
+
+Software requirements definition (functional and control logic requirements, high level software requirements).
+
+Software/hardware validation and verification activities.
+
+Are you THE one ? 
+
+Master's degree / Diploma in Engineering or similar qualifications.
+
+Matlab Simulink experience and software integration and validation through simulation.
+
+Matlab Simulink Real-Time module experience.
+
+Work experience in System Engineering, requirements definition and V&V.
+
+At least 3 years of experience working in software development/integration.
+
+Work experience in SW development or SW modification.
+
+Work experience in SW requirements and control logics definition.
+
+Work experience in SW testing and related V&V process.
+
+Knowledge in hardware platform is a plus.
+
+Knowledge in Model-Based System Engineering (MBSE) is a plus.
+
+Experience in technical (international) coordination would be appreciated.
+
+Good interpersonal and presentation skills (with business customers, internal and/or external, with Extended Enterprise subcontractors, etc).
+
+Good communication skills and ability to work within an international team.
+
+Ability to abstract problems and issues in an analytical way.
+
+Ability to propose solutions and to challenge alternatives based on particular business models in a constructive and respectful way.
+
+Fluency in English is mandatory, Spanish or French or German is appreciated.
+
+Team-oriented mindset with high communication skills, open mindset and willingness to learn to complete your Profile.
+
+Experience in Fuel Cells in Automotive or other domains is a plus.
+
+You are looking for a position with various activities and real professional opportunities…
+
+Join the Airbus Protect journey, we are waiting for you!
+
+This job requires an awareness of any potential compliance risks and a commitment to act with integrity, as the foundation for the Company’s success, reputation and sustainable growth.
+
+Company:
+
+ENSIA EXPERT, S.L.
+Contract Type:
+
+Permanent
+-------
+
+Experience Level:
+
+Professional
+Job Family:
+
+Fluid & Hydromechanics, Thermal <JF-EN-EF>
+By submitting your CV or application you are consenting to Airbus using and storing information about you for monitoring purposes relating to your application or future employment. This information will only be used by Airbus.
+Airbus is committed to achieving workforce diversity and creating an inclusive working environment. We welcome all applications irrespective of social and cultural background, age, gender, disability, sexual orientation or religious belief.
+
+Airbus is, and always has been, committed to equal opportunities for all. As such, we will never ask for any type of monetary exchange in the frame of a recruitment process. Any impersonation of Airbus to do so should be reported to emsom@airbus.com.
+
+At Airbus, we support you to work, connect and collaborate more easily and flexibly. Wherever possible, we foster flexible working arrangements to stimulate innovative thinking.
