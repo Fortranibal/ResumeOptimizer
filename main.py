@@ -1,4 +1,4 @@
-# import openai
+import openai
 from openai import OpenAI
 from pathlib import Path
 import shutil
@@ -10,7 +10,11 @@ import subprocess
 from dotenv import load_dotenv
 import datetime
 
-load_dotenv()
+# Load environment variables
+# load_dotenv()
+
+# Set up OpenAI API key
+# openai.api_key = os.getenv('OPENAI_API_KEY')
 
 class ResumeProjectOptimizer:
     """
@@ -59,67 +63,6 @@ class ResumeProjectOptimizer:
             skills = json.load(f)
         return skills
 
-    def extract_achievements(self, description: str) -> List[str]:
-        """Extract achievements and outcomes from project description"""
-        achievements = []
-        
-        # Look for specific achievement indicators
-        indicators = [
-            (r'achieved.*?[\.\n]', 'achievement'),
-            (r'improved.*?[\.\n]', 'improvement'),
-            (r'reduced.*?[\.\n]', 'reduction'),
-            (r'increased.*?[\.\n]', 'increase'),
-            (r'developed.*?[\.\n]', 'development'),
-        ]
-        
-        for pattern, _ in indicators:
-            matches = re.finditer(pattern, description, re.IGNORECASE)
-            achievements.extend([match.group(0).strip() for match in matches])
-            
-        return achievements
-
-    def extract_keywords(self, description: str) -> List[str]:
-        """Extract key technical terms and concepts from description"""
-        keywords = []
-        technical_terms = [
-            "reinforcement learning", "CNN", "trajectory", "propulsion",
-            "simulation", "control", "aerospace", "machine learning",
-            "computer vision", "mining", "satellite", "rocket"
-        ]
-        for term in technical_terms:
-            if term.lower() in description.lower():
-                keywords.append(term)
-        return keywords
-
-    def extract_technologies(self, description: str) -> List[str]:
-        """Extract specific technologies mentioned in description"""
-        technologies = []
-        tech_patterns = [
-            "Python", "C++", "MATLAB", "TD3", "DDPG", "YOLOv7",
-            "LaTeX", "STK", "GMAT", "EcoSimPro"
-        ]
-        for tech in tech_patterns:
-            if tech in description:
-                technologies.append(tech)
-        return technologies
-
-    def extract_metrics(self, description: str) -> Dict[str, str]:
-        """Extract quantitative metrics from description"""
-        metrics = {}
-        metric_patterns = [
-            (r'(\d+(?:\.\d+)?)\s*%', 'percentage'),
-            (r'(\d+(?:\.\d+)?)\s*km/s', 'velocity'),
-            (r'(\d+(?:\.\d+)?)\s*G', 'g_force'),
-            (r'Mach\s*(\d+(?:\.\d+)?)', 'mach')
-        ]
-        
-        for pattern, metric_type in metric_patterns:
-            matches = re.findall(pattern, description)
-            if matches:
-                metrics[metric_type] = matches[0]
-                
-        return metrics
-    
 
     def extract_relevant_skills(self, job_description: str) -> Dict[str, Union[List[Dict], Dict[str, List[str]]]]:
         """
@@ -132,9 +75,6 @@ class ResumeProjectOptimizer:
 
         Job Description:
         {job_description}
-
-        Candidate's Current Skills:
-        {json.dumps(self.skills, indent=2)}
 
         For each skill, provide:
         - Relevance score (0-100)
@@ -180,9 +120,6 @@ class ResumeProjectOptimizer:
 
             print("\nReceived response from GPT")
             result = response.choices[0].message.content
-            # print("\nGPT Response:")
-            # print(result)
-
             print("\nAttempting to parse JSON...")
             parsed_json = json.loads(result)
             print("Successfully parsed JSON")
@@ -252,8 +189,6 @@ class ResumeProjectOptimizer:
 
             print("\nReceived project ranking response")
             result = response.choices[0].message.content
-            # print("\nGPT Response for ranking:")
-            
             print("\nParsing ranking JSON...")
             parsed_json = json.loads(result)
             print("Successfully parsed ranking JSON")
@@ -264,40 +199,6 @@ class ResumeProjectOptimizer:
             print(f"\nError in rank_projects: {str(e)}")
             raise
 
-    def update_latex_file(self, ranked_projects: List[Dict]):
-        """
-        Update the LaTeX file with the ranked projects.
-        
-        Args:
-            ranked_projects: List of ranked project dictionaries
-        """
-        latex_path = 'src/resume.tex'
-        
-        with open(latex_path, 'r') as f:
-            content = f.read()
-            
-        # Create new project order based on rankings
-        project_order = [proj['project_id'] for proj in ranked_projects]
-        
-        # Update project order in LaTeX
-        projects_section = r'% Begin Projects Section'
-        for idx, project_id in enumerate(project_order):
-            # Replace existing project command with new ordered version
-            old_pattern = rf'\\project{project_id}'
-            new_command = f'\\project{project_id}'
-            content = content.replace(old_pattern, new_command)
-            
-        with open(latex_path, 'w') as f:
-            f.write(content)
-
-    def compile_pdf(self):
-        """Compile the LaTeX file into a PDF"""
-        try:
-            # Run pdflatex twice to ensure references are properly updated
-            subprocess.run(['pdflatex', 'src/resume.tex'], check=True)
-            subprocess.run(['pdflatex', 'src/resume.tex'], check=True)
-        except subprocess.CalledProcessError as e:
-            raise Exception(f"Error compiling PDF: {str(e)}")
 
     def load_job_description(self, filepath: str) -> str:
         """Load job description from a text file"""
@@ -310,10 +211,17 @@ class ResumeProjectOptimizer:
             raise Exception(f"Error reading job description: {str(e)}")
 
 def main():
-    # Load OpenAI API key from environment
-    api_key = os.getenv('OPENAI_API_KEY')
-    if not api_key:
-        raise ValueError("Please set OPENAI_API_KEY environment variable")
+    # Load API key directly from .env for more reliable loading
+    try:
+        with open('.env', 'r') as f:
+            env_contents = f.read()
+            api_key = env_contents.split('=')[1].strip()
+    except Exception as e:
+        print(f"Error loading API key: {e}")
+        return
+
+    # Verify key is loaded (just show first few chars)
+    print(f"API key loaded: {api_key[:5]}...")
 
     # Initialize optimizer
     optimizer = ResumeProjectOptimizer(api_key)
@@ -359,12 +267,6 @@ def main():
             json.dump(output_data, f, indent=2, ensure_ascii=False)
             
         print(f"\nAnalysis results saved to {output_path}")
-
-        # # Update LaTeX and compile PDF
-        # optimizer.update_latex_file(ranked_projects)
-        # optimizer.compile_pdf()
-        
-        print("\nDone! Your resume has been updated and recompiled.")
         
     except Exception as e:
         error_data = {
