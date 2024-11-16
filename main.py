@@ -1,5 +1,8 @@
+# LLM Response Parser
 import openai
 from openai import OpenAI
+from dotenv import load_dotenv
+# Required for file I/O, JSON parsing, etc.
 from pathlib import Path
 import shutil
 import os
@@ -7,14 +10,10 @@ import json
 from typing import List, Dict, Union
 import re
 import subprocess
-from dotenv import load_dotenv
 import datetime
-
-# Load environment variables
-# load_dotenv()
-
-# Set up OpenAI API key
-# openai.api_key = os.getenv('OPENAI_API_KEY')
+# For visual print statements
+from colorama import init, Fore, Back, Style
+import time
 
 class ResumeProjectOptimizer:
     """
@@ -211,72 +210,68 @@ class ResumeProjectOptimizer:
             raise Exception(f"Error reading job description: {str(e)}")
 
 def main():
-    # Load API key directly from .env for more reliable loading
+    # Initialize colorama
+    init()
+
+    print(f"\n{Fore.CYAN}{'='*50}{Style.RESET_ALL}")
+    print(f"{Fore.YELLOW}📝 Resume Optimizer Starting...{Style.RESET_ALL}")
+    print(f"{Fore.CYAN}{'='*50}{Style.RESET_ALL}\n")
+
+    # Load API key
     try:
         with open('.env', 'r') as f:
             env_contents = f.read()
             api_key = env_contents.split('=')[1].strip()
+        print(f"{Fore.GREEN}✓ API key loaded successfully{Style.RESET_ALL}")
     except Exception as e:
-        print(f"Error loading API key: {e}")
-        return
-
-    # Verify key is loaded (just show first few chars)
-    print(f"API key loaded: {api_key[:5]}...")
-
-    # Initialize optimizer
-    optimizer = ResumeProjectOptimizer(api_key)
-
-    # Define paths
-    job_desc_path = 'src/job_description.txt'
-    output_path = 'output/output.json'
-
-    # Check if job description file exists
-    if not os.path.exists(job_desc_path):
-        print(f"Please create {job_desc_path} with the job description and run again.")
-        print("You can copy-paste the entire job posting into this file.")
-        
-        # Create empty file for user
-        with open(job_desc_path, 'w', encoding='utf-8') as f:
-            f.write("Paste job description here")
-        
+        print(f"{Fore.RED}✗ Error loading API key: {e}{Style.RESET_ALL}")
         return
 
     try:
-        # Load and analyze job description
-        job_description = optimizer.load_job_description(job_desc_path)
-        print("\nJob description loaded successfully!")
+        # Initialize optimizer
+        optimizer = ResumeProjectOptimizer(api_key)
+        print(f"{Fore.GREEN}✓ Resume Optimizer initialized{Style.RESET_ALL}")
+
+        # Load job description
+        job_description = optimizer.load_job_description('src/job_description.txt')
+        print(f"{Fore.GREEN}✓ Job description loaded successfully!{Style.RESET_ALL}")
+
+        print(f"\n{Fore.YELLOW}🔄 Analyzing job description...{Style.RESET_ALL}")
+        print(f"{Fore.CYAN}{'='*50}{Style.RESET_ALL}")
         
-        # Extract skills
+        # Extract relevant skills
+        print(f"\n{Fore.YELLOW}📊 Extracting relevant skills...{Style.RESET_ALL}")
         relevant_skills = optimizer.extract_relevant_skills(job_description)
         
         # Rank projects
-        print("\nAnalyzing projects for best match...")
+        print(f"\n{Fore.YELLOW}🏆 Ranking projects...{Style.RESET_ALL}")
         ranked_projects = optimizer.rank_projects(job_description)
-        
-        # Prepare output data
-        output_data = {
-            "analysis_timestamp": datetime.datetime.now().isoformat(),
-            "job_description_length": len(job_description),
-            "skill_analysis": relevant_skills,
-            "ranked_projects": ranked_projects,
-            "job_description": job_description
+
+        # Save results
+        output = {
+            "relevant_skills": relevant_skills,
+            "ranked_projects": ranked_projects
         }
         
-        # Save to output.json
-        with open(output_path, 'w', encoding='utf-8') as f:
-            json.dump(output_data, f, indent=2, ensure_ascii=False)
-            
-        print(f"\nAnalysis results saved to {output_path}")
-        
+        output_path = Path('output/output.json')
+        with open(output_path, 'w') as f:
+            json.dump(output, f, indent=2)
+        print(f"\n{Fore.GREEN}✓ Results saved to {output_path}{Style.RESET_ALL}")
+
     except Exception as e:
-        error_data = {
+        print(f"\n{Fore.RED}✗ Error: {str(e)}{Style.RESET_ALL}")
+        # Save error output
+        error_output = {
             "error": str(e),
-            "timestamp": datetime.datetime.now().isoformat()
+            "timestamp": datetime.now().isoformat()
         }
-        with open(output_path, 'w', encoding='utf-8') as f:
-            json.dump(error_data, f, indent=2)
-        print(f"Error: {str(e)}")
-        return
+        with open('output/output.json', 'w') as f:
+            json.dump(error_output, f, indent=2)
+        raise
+
+    print(f"\n{Fore.CYAN}{'='*50}{Style.RESET_ALL}")
+    print(f"{Fore.GREEN}✨ Process completed successfully!{Style.RESET_ALL}")
+    print(f"{Fore.CYAN}{'='*50}{Style.RESET_ALL}\n")
 
 if __name__ == "__main__":
     main()
