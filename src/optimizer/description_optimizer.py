@@ -28,7 +28,7 @@ class DescriptionOptimizer:
             """
             
             response = self.client.chat.completions.create(
-                model="gpt-4",
+                model="gpt-3.5-turbo",
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.3,
             )
@@ -61,7 +61,7 @@ class DescriptionOptimizer:
             # Extract position name for folder
             position_name = self._extract_position_name(job_description)
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            output_dir = Path(f'output/{position_name}_{timestamp}')
+            output_dir = Path(f'output/{timestamp}_{position_name}')
             output_dir.mkdir(parents=True, exist_ok=True)
             
             print(f"{Fore.CYAN}Creating output directory for position: {position_name}{Style.RESET_ALL}")
@@ -105,48 +105,13 @@ class DescriptionOptimizer:
             print(f"Original projects type: {type(original_projects)}")
             raise Exception(f"Optimization error: {str(e)}")
 
-    def _validate_changes(self, original: str, optimized: str, relevant_skills: Dict) -> bool:
-        """
-        Validate that the changes made are reasonable and maintain authenticity.
-        """
-        # Check length difference (shouldn't change more than 20%)
-        length_diff_ratio = abs(len(optimized) - len(original)) / len(original)
-        if length_diff_ratio > 0.2:
-            print(f"{Fore.YELLOW}Warning: Description length changed by {length_diff_ratio*100:.1f}%{Style.RESET_ALL}")
-            return False
-
-        # Check keyword density
-        keywords = set(relevant_skills.get('technical_skills', []) + 
-                      relevant_skills.get('technologies', []))
-        
-        original_keyword_count = sum(1 for keyword in keywords 
-                                   if keyword.lower() in original.lower())
-        optimized_keyword_count = sum(1 for keyword in keywords 
-                                    if keyword.lower() in optimized.lower())
-        
-        if optimized_keyword_count > original_keyword_count * 1.5:
-            print(f"{Fore.YELLOW}Warning: Keyword density increased too much{Style.RESET_ALL}")
-            return False
-
-        # Check sentence structure similarity (shouldn't add many new sentences)
-        original_sentences = len([s for s in original.split('.') if s.strip()])
-        optimized_sentences = len([s for s in optimized.split('.') if s.strip()])
-        
-        if abs(optimized_sentences - original_sentences) > 1:
-            print(f"{Fore.YELLOW}Warning: Sentence structure changed significantly{Style.RESET_ALL}")
-            return False
-
-        return True
-
     def _optimize_single_project(
         self,
         rank_info: Dict,
         original_projects: List[Dict],
         relevant_skills: Dict
     ) -> Optional[Dict]:
-        """
-        Optimize a single project description while maintaining authenticity.
-        """
+        """Optimize a single project description while maintaining authenticity."""
         project_title = rank_info.get('id')
         if not project_title:
             print(f"{Fore.YELLOW}Warning: Missing project title in ranking info{Style.RESET_ALL}")
@@ -158,24 +123,53 @@ class DescriptionOptimizer:
             return None
             
         original_project = matching_projects[0]
+        original_description = original_project.get('description', '')
         
         try:
             response = self.client.chat.completions.create(
                 model="gpt-3.5-turbo",
                 messages=[{
-                    "role": "user", 
-                    "content": self._create_optimization_prompt(original_project, relevant_skills)
+                    "role": "system",
+                    "content": "You are a technical resume optimizer that makes subtle but effective improvements to project descriptions."
+                },
+                {
+                    "role": "user",
+                    "content": f"""
+                    Original description: {original_description}
+                    
+                    Job context and relevant skills:
+                    {json.dumps(relevant_skills, indent=2)}
+                    
+                    Modify this description to:
+                    1. Highlight relevant technical aspects
+                    2. Use industry-standard terminology
+                    3. Keep the same achievements and metrics
+                    4. Stay within 50% of original length
+                    5. Focus on the most relevant skills for this job
+                    
+                    Return ONLY the modified description, no explanations.
+                    """
                 }],
-                temperature=0.3,  # Lower temperature for more conservative changes
+                temperature=0.5,
             )
             
             optimized_description = response.choices[0].message.content.strip()
+            
+            # Print the attempted modification for debugging
+            print(f"\n{Fore.CYAN}Project: {project_title}{Style.RESET_ALL}")
+            print(f"{Fore.YELLOW}Original:{Style.RESET_ALL} {original_description}")
+            print(f"{Fore.YELLOW}Attempted:{Style.RESET_ALL} {optimized_description}")
+            
+            # Validate changes
+            if len(optimized_description.split()) > len(original_description.split()) * 1.5:
+                print(f"{Fore.RED}Changes too extensive, using original{Style.RESET_ALL}")
+                optimized_description = original_description
             
             return {
                 **original_project,
                 'title': project_title,
                 'description': optimized_description,
-                'original_description': original_project.get('description', ''),
+                'original_description': original_description,
                 'relevance_score': rank_info.get('relevance_score', 0),
                 'optimization_reason': rank_info.get('reason', '')
             }
@@ -184,47 +178,54 @@ class DescriptionOptimizer:
             print(f"{Fore.RED}Error in API call for project {project_title}: {str(e)}{Style.RESET_ALL}")
             return None
 
+    def _validate_changes(self, original: str, optimized: str, relevant_skills: Dict) -> bool:
+        """Validate that the changes made are reasonable and maintain authenticity."""
+        # Calculate word-level changes
+        original_words = set(original.lower().split())
+        optimized_words = set(optimized.lower().split())
+        
+        # Calculate change percentage
+        changed_words = len(original_words.symmetric_difference(optimized_words))
+        total_words = len(original_words)
+        change_percentage = (changed_words / total_words) * 100
+        
+        print(f"\n{Fore.CYAN}Change Analysis:{Style.RESET_ALL}")
+        print(f"Words changed: {changed_words}/{total_words} ({change_percentage:.1f}%)")
+        
+        # More permissive validation
+        if change_percentage > 50:
+            print(f"{Fore.RED}Too many words changed ({change_percentage:.1f}%){Style.RESET_ALL}")
+            return False
+            
+        # Check length ratio
+        length_ratio = len(optimized) / len(original)
+        if length_ratio < 0.8 or length_ratio > 1.5:
+            print(f"{Fore.RED}Length ratio out of bounds: {length_ratio:.2f}{Style.RESET_ALL}")
+            return False
+        
+        return True
+
     def _create_optimization_prompt(self, project: Dict, relevant_skills: Dict) -> str:
-        """
-        Create a prompt that emphasizes minimal, authentic modifications.
-        """
-        technical_skills = ', '.join(relevant_skills.get('technical_skills', []))
-        domain_knowledge = ', '.join(relevant_skills.get('domain_knowledge', []))
-        technologies = ', '.join(relevant_skills.get('technologies', []))
-        
+        """Create a prompt for more focused optimization."""
         return f"""
-        Original project description: {project.get('description', '')}
+        Optimize this project description for a job application:
+        "{project.get('description', '')}"
         
-        Context: You are helping to subtly optimize this project description for a job application. 
-        The goal is to make MINIMAL, AUTHENTIC modifications that highlight relevant experience 
-        without changing the core facts or adding false claims.
-
-        Relevant elements from job requirements:
-        Technical skills: {technical_skills}
-        Domain knowledge: {domain_knowledge}
-        Technologies: {technologies}
+        Requirements:
+        1. Keep the same technical achievements and metrics
+        2. Highlight these relevant skills: {', '.join(relevant_skills.get('technical_skills', []))}
+        3. Use appropriate terminology from: {', '.join(relevant_skills.get('domain_knowledge', []))}
+        4. Maintain similar length and structure
+        5. Focus on emphasizing relevant experience without adding new claims
         
-        Instructions for modification:
-        1. Keep at least 80% of the original text unchanged
-        2. Only modify terms where there's a DIRECT equivalent (e.g., "created" → "developed")
-        3. DO NOT add any new technical claims or achievements
-        4. DO NOT add technologies or tools that weren't in the original
-        5. Focus on highlighting existing relevant experience using job-appropriate terminology
-        6. Maintain the original tone and level of technical detail
-        7. If a skill/technology isn't explicitly mentioned in the original, DO NOT add it
-        8. Keep the same quantitative metrics and achievements
-
-        Bad example (too modified):
-        Original: "Built a rocket control system using Python"
-        Bad: "Engineered advanced propulsion control algorithms using Python, C++, and MATLAB for aerospace applications"
+        Example of good optimization:
+        Original: "Built a control system using Python"
+        Good: "Developed control system software in Python, implementing feedback loops for system monitoring"
         
-        Good example (subtle optimization):
-        Original: "Built a rocket control system using Python"
-        Good: "Developed a propulsion control system using Python"
-
-        Return only the modified description, keeping it concise and authentic.
-        If you can't make meaningful yet subtle changes, return the original description unchanged.
+        Return ONLY the optimized description.
         """
+
+
 
     def _save_results(
         self,
