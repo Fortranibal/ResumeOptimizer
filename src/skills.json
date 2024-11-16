@@ -1,8 +1,0 @@
-{
-    "skills": {
-      "Languages": ["Python", "C++", "MATLAB", "Shell Scripts", "JavaScript", "React"],
-      "Technologies": ["Git", "Linux", "Blender", "ASTOS", "STK", "GMAT", "EcosimPro", "Solidworks", "Simulink"],
-      "Aerospace": ["Launch Vehicles", "Trajectory Analysis", "Test Procedures", "Launch Operations", "6DOF Simulation"]
-    }
-}
-  

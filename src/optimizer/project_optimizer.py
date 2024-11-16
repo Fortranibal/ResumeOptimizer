@@ -13,6 +13,46 @@ class ProjectOptimizer:
         self.projects = FileLoader.load_projects(Path('input/projects.json'))
         self.skills = FileLoader.load_skills(Path('input/skills.json'))
 
+    def rank_projects(self, job_description: str) -> List[Dict]:
+        """Rank projects based on job description"""
+        try:
+            prompt = f"""
+            Given these projects and job description, rank the projects by relevance.
+            Consider technical alignment, domain relevance, and skill match.
+            
+            Projects:
+            {json.dumps(self.projects, indent=2)}
+            
+            Job Description:
+            {job_description}
+            
+            For each project, return a JSON object with:
+            - id: use the project's full title
+            - relevance_score: 0-100
+            - reason: brief explanation of ranking
+            
+            Return exactly 3 projects, sorted by relevance_score descending.
+            Make sure to use the exact project titles as IDs.
+            """
+            
+            response = self.client.chat.completions.create(
+                model="gpt-3.5-turbo",
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.7,
+            )
+            
+            ranked_projects = json.loads(response.choices[0].message.content)
+            
+            # Validate that we're using titles as IDs
+            for project in ranked_projects:
+                if project.get('id') not in [p.get('title') for p in self.projects]:
+                    raise ValueError(f"Invalid project ID returned: {project.get('id')}")
+            
+            return ranked_projects
+            
+        except Exception as e:
+            raise Exception(f"Error ranking projects: {str(e)}")
+
     def extract_relevant_skills(self, job_description: str) -> Dict[str, Union[List[Dict], Dict[str, List[str]]]]:
         """Extract relevant skills from job description"""
         try:
@@ -40,34 +80,3 @@ class ProjectOptimizer:
             
         except Exception as e:
             raise Exception(f"Error extracting skills: {str(e)}")
-
-    def rank_projects(self, job_description: str) -> List[Dict]:
-        """Rank projects based on job description"""
-        try:
-            prompt = f"""
-            Given these projects and job description, rank the projects by relevance.
-            Consider technical alignment, domain relevance, and skill match.
-            
-            Projects:
-            {json.dumps(self.projects, indent=2)}
-            
-            Job Description:
-            {job_description}
-            
-            Return a JSON array of objects with:
-            - id: project ID
-            - relevance_score: 0-100
-            - reason: brief explanation of ranking
-            Sort by relevance_score descending.
-            """
-            
-            response = self.client.chat.completions.create(
-                model="gpt-3.5-turbo",
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.7,
-            )
-            
-            return json.loads(response.choices[0].message.content)
-            
-        except Exception as e:
-            raise Exception(f"Error ranking projects: {str(e)}")

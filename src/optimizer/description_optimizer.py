@@ -10,12 +10,6 @@ from colorama import Fore, Style
 
 class DescriptionOptimizer:
     def __init__(self, api_key: str):
-        """
-        Initialize the Description Optimizer with OpenAI API credentials.
-        
-        Args:
-            api_key (str): OpenAI API key for authentication
-        """
         self.client = OpenAI(api_key=api_key)
 
     def optimize_descriptions(
@@ -26,17 +20,6 @@ class DescriptionOptimizer:
     ) -> List[Dict]:
         """
         Optimize project descriptions to better match job requirements while maintaining authenticity.
-        
-        Args:
-            original_projects: List of original project descriptions
-            relevant_skills: Dictionary of skills extracted from job description
-            ranked_projects: List of ranked projects by relevance
-            
-        Returns:
-            List[Dict]: List of projects with optimized descriptions
-            
-        Raises:
-            Exception: If there's an error during optimization
         """
         optimized_projects = []
         
@@ -49,7 +32,7 @@ class DescriptionOptimizer:
             # Debug information
             self._print_debug_info(original_projects, ranked_projects)
             
-            # Process top ranked projects
+            # Process exactly top 3 projects
             for rank_info in ranked_projects[:3]:
                 try:
                     optimized_project = self._optimize_single_project(
@@ -62,13 +45,16 @@ class DescriptionOptimizer:
                 except Exception as e:
                     print(f"{Fore.RED}Error optimizing project: {str(e)}{Style.RESET_ALL}")
             
-            # Save results
+            # Save results in different formats
             self._save_results(
                 output_dir,
                 optimized_projects,
                 relevant_skills,
                 ranked_projects
             )
+            
+            # Generate and save CV-ready descriptions
+            self._save_cv_descriptions(output_dir, optimized_projects)
             
             return optimized_projects
             
@@ -86,25 +72,17 @@ class DescriptionOptimizer:
     ) -> Optional[Dict]:
         """
         Optimize a single project description.
-        
-        Args:
-            rank_info: Ranking information for the project
-            original_projects: List of all original projects
-            relevant_skills: Relevant skills from job description
-            
-        Returns:
-            Optional[Dict]: Optimized project or None if optimization fails
         """
-        # Extract project ID
-        project_id = rank_info.get('id')
-        if not project_id:
-            print(f"{Fore.YELLOW}Warning: Missing project ID in ranking info{Style.RESET_ALL}")
+        # Extract project title (used as ID)
+        project_title = rank_info.get('id')
+        if not project_title:
+            print(f"{Fore.YELLOW}Warning: Missing project title in ranking info{Style.RESET_ALL}")
             return None
         
-        # Find matching project
-        matching_projects = [p for p in original_projects if p.get('id') == project_id]
+        # Find matching project by title
+        matching_projects = [p for p in original_projects if p.get('title') == project_title]
         if not matching_projects:
-            print(f"{Fore.YELLOW}Warning: No matching project found for ID {project_id}{Style.RESET_ALL}")
+            print(f"{Fore.YELLOW}Warning: No matching project found for title: {project_title}{Style.RESET_ALL}")
             return None
             
         original_project = matching_projects[0]
@@ -125,6 +103,7 @@ class DescriptionOptimizer:
             # Create optimized project dictionary
             return {
                 **original_project,
+                'title': project_title,
                 'description': optimized_description,
                 'original_description': original_project.get('description', ''),
                 'relevance_score': rank_info.get('relevance_score', 0),
@@ -132,21 +111,13 @@ class DescriptionOptimizer:
             }
             
         except Exception as e:
-            print(f"{Fore.RED}Error in API call for project {project_id}: {str(e)}{Style.RESET_ALL}")
+            print(f"{Fore.RED}Error in API call for project {project_title}: {str(e)}{Style.RESET_ALL}")
             return None
 
     def _create_optimization_prompt(self, project: Dict, relevant_skills: Dict) -> str:
         """
         Create the prompt for description optimization.
-        
-        Args:
-            project: Original project dictionary
-            relevant_skills: Dictionary of relevant skills
-            
-        Returns:
-            str: Formatted prompt for the API
         """
-        # Extract skills to emphasize
         technical_skills = ', '.join(relevant_skills.get('technical_skills', []))
         domain_knowledge = ', '.join(relevant_skills.get('domain_knowledge', []))
         technologies = ', '.join(relevant_skills.get('technologies', []))
@@ -177,16 +148,10 @@ class DescriptionOptimizer:
         ranked_projects: List[Dict]
     ) -> None:
         """
-        Save optimization results to file.
-        
-        Args:
-            output_dir: Directory to save results
-            optimized_projects: List of optimized projects
-            relevant_skills: Dictionary of relevant skills
-            ranked_projects: List of ranked projects
+        Save complete optimization results to JSON.
         """
         try:
-            output_file = output_dir / 'optimized_projects.json'
+            output_file = output_dir / 'optimization_results.json'
             with open(output_file, 'w', encoding='utf-8') as f:
                 json.dump({
                     'timestamp': datetime.now().isoformat(),
@@ -194,17 +159,43 @@ class DescriptionOptimizer:
                     'relevant_skills': relevant_skills,
                     'ranked_projects': ranked_projects
                 }, f, indent=2, ensure_ascii=False)
-            print(f"{Fore.GREEN}Results saved to: {output_file}{Style.RESET_ALL}")
+            print(f"{Fore.GREEN}Full results saved to: {output_file}{Style.RESET_ALL}")
         except Exception as e:
             print(f"{Fore.RED}Error saving results: {str(e)}{Style.RESET_ALL}")
+
+    def _save_cv_descriptions(self, output_dir: Path, optimized_projects: List[Dict]) -> None:
+        """
+        Save CV-ready descriptions in both JSON and TXT formats.
+        """
+        try:
+            # Save as JSON
+            cv_json_file = output_dir / 'cv_descriptions.json'
+            cv_descriptions = {
+                project['title']: project['description']
+                for project in optimized_projects
+            }
+            with open(cv_json_file, 'w', encoding='utf-8') as f:
+                json.dump(cv_descriptions, f, indent=2, ensure_ascii=False)
+            
+            # Save as TXT (more CV-friendly format)
+            cv_txt_file = output_dir / 'cv_descriptions.txt'
+            with open(cv_txt_file, 'w', encoding='utf-8') as f:
+                for project in optimized_projects:
+                    f.write(f"Project: {project['title']}\n")
+                    f.write("-" * 50 + "\n")
+                    f.write(f"{project['description']}\n")
+                    f.write("\n" + "=" * 50 + "\n\n")
+            
+            print(f"{Fore.GREEN}CV-ready descriptions saved to:{Style.RESET_ALL}")
+            print(f"{Fore.GREEN}  - {cv_json_file}{Style.RESET_ALL}")
+            print(f"{Fore.GREEN}  - {cv_txt_file}{Style.RESET_ALL}")
+            
+        except Exception as e:
+            print(f"{Fore.RED}Error saving CV descriptions: {str(e)}{Style.RESET_ALL}")
 
     def _print_debug_info(self, original_projects: List[Dict], ranked_projects: List[Dict]) -> None:
         """
         Print debug information about the projects.
-        
-        Args:
-            original_projects: List of original projects
-            ranked_projects: List of ranked projects
         """
         try:
             if ranked_projects and original_projects:
