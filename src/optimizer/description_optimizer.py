@@ -119,25 +119,24 @@ class DescriptionOptimizer:
             )
             
             if best_alternative:
-                return {
-                    **original_project,
-                    'title': project_title,
-                    'description': best_alternative['description'],
-                    'original_description': original_description,
-                    'relevance_score': rank_info.get('relevance_score', 0),
-                    'optimization_reason': rank_info.get('reason', ''),
-                    'similarity_score': best_alternative['similarity_score']
-                }
+                optimized_description = best_alternative['description']
+                similarity_score = best_alternative['similarity_score']
             else:
-                print(f"{Fore.RED}No suitable alternative found, using original{Style.RESET_ALL}")
-                return {
-                    **original_project,
-                    'title': project_title,
-                    'description': original_description,
-                    'original_description': original_description,
-                    'relevance_score': rank_info.get('relevance_score', 0),
-                    'optimization_reason': rank_info.get('reason', '')
-                }
+                # Use enhanced original if no good alternative
+                enhanced = self._enhance_original(original_description, relevant_skills)
+                optimized_description = enhanced
+                similarity_score = 0.8  # High score for enhanced original
+
+            return {
+                **original_project,
+                'title': project_title,
+                'description': optimized_description,
+                'original_description': original_description,
+                'relevance_score': rank_info.get('relevance_score', 0),
+                'optimization_reason': rank_info.get('reason', ''),
+                'similarity_score': similarity_score
+            }
+
                 
         except Exception as e:
             print(f"{Fore.RED}Error generating alternatives for {project_title}: {str(e)}{Style.RESET_ALL}")
@@ -202,30 +201,33 @@ class DescriptionOptimizer:
         original_words = set(original.lower().split())
         alternative_words = set(alternative.lower().split())
         
-        # Word retention rate
+        # Word retention rate - adjusted to be more lenient
         retained_words = len(original_words.intersection(alternative_words))
         retention_rate = retained_words / len(original_words)
         
-        # Length ratio
+        # Length ratio - increased acceptable range
         length_ratio = len(alternative) / len(original)
-        length_penalty = 1.0 if 0.8 <= length_ratio <= 1.5 else 0.5
+        length_penalty = 1.0 if 0.7 <= length_ratio <= 2.5 else max(0.6, 1 - abs(length_ratio - 1.5))
         
-        # Keyword inclusion
-        keywords = set(relevant_skills.get('technical_skills', []) + 
-                      relevant_skills.get('technologies', []))
-        keyword_score = sum(1 for keyword in keywords 
-                           if keyword.lower() in alternative.lower()) / max(len(keywords), 1)
+        # Enhanced keyword scoring
+        keywords = set()
+        for category in ['technical_skills', 'technologies', 'domain_knowledge']:
+            keywords.update(k.lower() for k in relevant_skills.get(category, []))
         
-        # Calculate final score
+        keyword_matches = sum(1 for keyword in keywords 
+                            if keyword.lower() in alternative.lower())
+        keyword_score = min(1.0, keyword_matches / max(len(keywords), 1))
+        
+        # Adjusted weights and scoring
         score = (
-            (retention_rate * 0.4) +      # 40% weight on content retention
-            (length_penalty * 0.3) +      # 30% weight on length
-            (keyword_score * 0.3)         # 30% weight on keywords
+            (retention_rate * 0.20) +     # Reduced weight on retention
+            (length_penalty * 0.60) +     # Increased weight on length
+            (keyword_score * 0.20)        # Maintained keyword importance
         )
         
         print(f"{Fore.CYAN}Similarity Metrics:{Style.RESET_ALL}")
         print(f"Content Retention: {retention_rate:.2f}")
-        print(f"Length Ratio: {length_ratio:.2f}")
+        print(f"Length Ratio: {length_ratio:.2f} (Penalty: {length_penalty:.2f})")
         print(f"Keyword Score: {keyword_score:.2f}")
         print(f"Final Score: {score:.2f}")
         
@@ -240,6 +242,9 @@ class DescriptionOptimizer:
         """Select the best alternative based on scores and comparison."""
         print(f"\n{Fore.CYAN}Comparing Alternatives:{Style.RESET_ALL}")
         
+        if not alternatives:
+            return None
+            
         # Sort by similarity score
         sorted_alternatives = sorted(
             alternatives,
@@ -252,14 +257,49 @@ class DescriptionOptimizer:
             print(f"\n{Fore.YELLOW}Alternative {i+1} (Score: {alt['similarity_score']:.2f}):{Style.RESET_ALL}")
             print(alt['description'])
         
-        # Select best alternative if it meets threshold
         best_alternative = sorted_alternatives[0]
-        if best_alternative['similarity_score'] >= 0.7:
-            print(f"\n{Fore.GREEN}Selected Best Alternative (Score: {best_alternative['similarity_score']:.2f}):{Style.RESET_ALL}")
-            print(best_alternative['description'])
-            return best_alternative
         
-        return None
+        # Always select the best alternative if it meets minimum criteria
+        if best_alternative['similarity_score'] >= 0.35:  # Lowered threshold
+            # Additional validation
+            min_length_ratio = len(best_alternative['description']) / len(original)
+            if 0.7 <= min_length_ratio <= 3.0:  # More lenient length constraints
+                print(f"\n{Fore.GREEN}Selected Alternative (Score: {best_alternative['similarity_score']:.2f}):{Style.RESET_ALL}")
+                print(best_alternative['description'])
+                return best_alternative
+                
+        # If no alternative meets criteria, create a slightly enhanced version of original
+        enhanced_description = self._enhance_original(original, relevant_skills)
+        return {
+            'description': enhanced_description,
+            'similarity_score': 0.8  # High score since it's based on original
+        }
+
+    def _enhance_original(self, original: str, relevant_skills: Dict) -> str:
+        """Create a slightly enhanced version of the original description."""
+        try:
+            response = self.client.chat.completions.create(
+                model="gpt-4-turbo",
+                messages=[
+                    {"role": "system", "content": "You are a technical writing expert. Make minimal enhancements while preserving all technical details."},
+                    {"role": "user", "content": f"""
+                        Slightly enhance this technical description while keeping ALL technical details exactly the same:
+                        {original}
+                        
+                        Rules:
+                        1. Keep ALL numbers and metrics exactly the same
+                        2. Maintain all technical terms
+                        3. Only make minor clarity improvements
+                        4. Do not add new claims or capabilities
+                        """}
+                ],
+                temperature=0.3,
+            )
+            return response.choices[0].message.content.strip()
+        except Exception as e:
+            print(f"{Fore.RED}Error enhancing original: {str(e)}{Style.RESET_ALL}")
+            return original
+
 
     def _save_results(
         self,

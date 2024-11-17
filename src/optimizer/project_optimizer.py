@@ -12,6 +12,11 @@ class ProjectOptimizer:
         self.client = OpenAI(api_key=api_key)
         self.projects = FileLoader.load_projects(Path('input/projects.json'))
         self.skills = FileLoader.load_skills(Path('input/skills.json'))
+        self.content_weight = 0.5
+        self.length_weight = 0.2
+        self.keyword_weight = 0.3
+        self.similarity_threshold = 0.4  # Lowered from previous value
+        self.max_length_ratio = 2.5      # Increased tolerance for length difference
 
     def extract_relevant_skills(self, job_description: str) -> Dict[str, Union[List[Dict], Dict[str, List[str]]]]:
         """Extract unique and relevant skills from job description"""
