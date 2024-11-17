@@ -12,45 +12,12 @@ class DescriptionOptimizer:
     def __init__(self, api_key: str):
         self.client = OpenAI(api_key=api_key)
 
-    def _extract_position_name(self, job_description: str) -> str:
-        """
-        Extract a clean position name from the job description for folder naming.
-        """
-        try:
-            # Ask GPT to extract the position name
-            prompt = f"""
-            Extract only the job position name from this job description.
-            Return ONLY the position name, nothing else.
-            Make it folder-name friendly (use underscores for spaces, remove special characters).
-            
-            Job Description:
-            {job_description[:500]}  # Using first 500 chars is usually enough for the title
-            """
-            
-            response = self.client.chat.completions.create(
-                model="gpt-3.5-turbo",
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.3,
-            )
-            
-            position_name = response.choices[0].message.content.strip()
-            
-            # Clean the position name for folder use
-            position_name = position_name.replace(' ', '_')
-            position_name = ''.join(c for c in position_name if c.isalnum() or c in ['_', '-'])
-            
-            return position_name.lower()
-            
-        except Exception as e:
-            print(f"{Fore.YELLOW}Warning: Could not extract position name: {str(e)}{Style.RESET_ALL}")
-            return f"job_application"  # fallback name
-
     def optimize_descriptions(
         self, 
         original_projects: List[Dict], 
         relevant_skills: Dict, 
         ranked_projects: List[Dict],
-        job_description: str  # Add this parameter
+        job_description: str
     ) -> List[Dict]:
         """
         Optimize project descriptions to better match job requirements while maintaining authenticity.
@@ -58,9 +25,9 @@ class DescriptionOptimizer:
         optimized_projects = []
         
         try:
-            # Extract position name for folder
-            position_name = self._extract_position_name(job_description)
+            # Create job-specific output directory
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            position_name = self._extract_position_name(relevant_skills.get('job_title', 'job_application'))
             output_dir = Path(f'output/{timestamp}_{position_name}')
             output_dir.mkdir(parents=True, exist_ok=True)
             
@@ -69,7 +36,7 @@ class DescriptionOptimizer:
             # Debug information
             self._print_debug_info(original_projects, ranked_projects)
             
-            # Process exactly top 3 projects
+            # Process top 3 projects
             for rank_info in ranked_projects[:3]:
                 try:
                     optimized_project = self._optimize_single_project(
@@ -78,22 +45,11 @@ class DescriptionOptimizer:
                         relevant_skills
                     )
                     if optimized_project:
-                        # Validate changes
-                        if self._validate_changes(
-                            optimized_project['original_description'],
-                            optimized_project['description'],
-                            relevant_skills
-                        ):
-                            optimized_projects.append(optimized_project)
-                        else:
-                            # If validation fails, use original description
-                            optimized_project['description'] = optimized_project['original_description']
-                            optimized_projects.append(optimized_project)
-                            
+                        optimized_projects.append(optimized_project)
                 except Exception as e:
                     print(f"{Fore.RED}Error optimizing project: {str(e)}{Style.RESET_ALL}")
             
-            # Save results in different formats
+            # Save results
             self._save_results(output_dir, optimized_projects, relevant_skills, ranked_projects)
             self._save_cv_descriptions(output_dir, optimized_projects)
             
@@ -111,7 +67,7 @@ class DescriptionOptimizer:
         original_projects: List[Dict],
         relevant_skills: Dict
     ) -> Optional[Dict]:
-        """Optimize a single project description while maintaining authenticity."""
+        """Optimize a single project description with multiple alternatives."""
         project_title = rank_info.get('id')
         if not project_title:
             print(f"{Fore.YELLOW}Warning: Missing project title in ranking info{Style.RESET_ALL}")
@@ -125,107 +81,185 @@ class DescriptionOptimizer:
         original_project = matching_projects[0]
         original_description = original_project.get('description', '')
         
+        print(f"\n{Fore.CYAN}Project: {project_title}{Style.RESET_ALL}")
+        print(f"{Fore.YELLOW}Original:{Style.RESET_ALL} {original_description}")
+        
         try:
-            response = self.client.chat.completions.create(
-                model="gpt-3.5-turbo",
-                messages=[{
-                    "role": "system",
-                    "content": "You are a technical resume optimizer that makes subtle but effective improvements to project descriptions."
-                },
-                {
-                    "role": "user",
-                    "content": f"""
-                    Original description: {original_description}
-                    
-                    Job context and relevant skills:
-                    {json.dumps(relevant_skills, indent=2)}
-                    
-                    Modify this description to:
-                    1. Highlight relevant technical aspects
-                    2. Use industry-standard terminology
-                    3. Keep the same achievements and metrics
-                    4. Stay within 50% of original length
-                    5. Focus on the most relevant skills for this job
-                    
-                    Return ONLY the modified description, no explanations.
-                    """
-                }],
-                temperature=0.5,
+            # Generate three alternatives
+            alternatives = []
+            for i in range(1):
+                response = self.client.chat.completions.create(
+                    model="gpt-4-turbo",
+                    messages=[
+                        {"role": "system", "content": "You are a technical resume optimizer that makes subtle but effective improvements to project descriptions."},
+                        {"role": "user", "content": self._create_optimization_prompt(original_description, relevant_skills, i+1)}
+                    ],
+                    temperature=0.3 + (i * 0.1),  # Slightly increase variation for each attempt
+                )
+                
+                alternative = response.choices[0].message.content.strip()
+                print(f"\n{Fore.YELLOW}Alternative {i+1}:{Style.RESET_ALL} {alternative}")
+                
+                similarity_score = self._calculate_similarity_score(
+                    original_description, 
+                    alternative, 
+                    relevant_skills
+                )
+                
+                alternatives.append({
+                    'description': alternative,
+                    'similarity_score': similarity_score
+                })
+
+            # Select best alternative
+            best_alternative = self._select_best_alternative(
+                original_description,
+                alternatives,
+                relevant_skills
             )
             
-            optimized_description = response.choices[0].message.content.strip()
-            
-            # Print the attempted modification for debugging
-            print(f"\n{Fore.CYAN}Project: {project_title}{Style.RESET_ALL}")
-            print(f"{Fore.YELLOW}Original:{Style.RESET_ALL} {original_description}")
-            print(f"{Fore.YELLOW}Attempted:{Style.RESET_ALL} {optimized_description}")
-            
-            # Validate changes
-            if len(optimized_description.split()) > len(original_description.split()) * 1.5:
-                print(f"{Fore.RED}Changes too extensive, using original{Style.RESET_ALL}")
-                optimized_description = original_description
-            
-            return {
-                **original_project,
-                'title': project_title,
-                'description': optimized_description,
-                'original_description': original_description,
-                'relevance_score': rank_info.get('relevance_score', 0),
-                'optimization_reason': rank_info.get('reason', '')
-            }
-            
+            if best_alternative:
+                return {
+                    **original_project,
+                    'title': project_title,
+                    'description': best_alternative['description'],
+                    'original_description': original_description,
+                    'relevance_score': rank_info.get('relevance_score', 0),
+                    'optimization_reason': rank_info.get('reason', ''),
+                    'similarity_score': best_alternative['similarity_score']
+                }
+            else:
+                print(f"{Fore.RED}No suitable alternative found, using original{Style.RESET_ALL}")
+                return {
+                    **original_project,
+                    'title': project_title,
+                    'description': original_description,
+                    'original_description': original_description,
+                    'relevance_score': rank_info.get('relevance_score', 0),
+                    'optimization_reason': rank_info.get('reason', '')
+                }
+                
         except Exception as e:
-            print(f"{Fore.RED}Error in API call for project {project_title}: {str(e)}{Style.RESET_ALL}")
+            print(f"{Fore.RED}Error generating alternatives for {project_title}: {str(e)}{Style.RESET_ALL}")
             return None
 
-    def _validate_changes(self, original: str, optimized: str, relevant_skills: Dict) -> bool:
-        """Validate that the changes made are reasonable and maintain authenticity."""
-        # Calculate word-level changes
-        original_words = set(original.lower().split())
-        optimized_words = set(optimized.lower().split())
+    def _create_optimization_prompt(self, original_description: str, relevant_skills: Dict, attempt: int) -> str:
+        """Create a prompt for generating alternative descriptions with technical accuracy."""
+        technical_skills = ', '.join(relevant_skills.get('technical_skills', []))
+        domain_knowledge = ', '.join(relevant_skills.get('domain_knowledge', []))
+        technologies = ', '.join(relevant_skills.get('technologies', []))
         
-        # Calculate change percentage
-        changed_words = len(original_words.symmetric_difference(optimized_words))
-        total_words = len(original_words)
-        change_percentage = (changed_words / total_words) * 100
-        
-        print(f"\n{Fore.CYAN}Change Analysis:{Style.RESET_ALL}")
-        print(f"Words changed: {changed_words}/{total_words} ({change_percentage:.1f}%)")
-        
-        # More permissive validation
-        if change_percentage > 50:
-            print(f"{Fore.RED}Too many words changed ({change_percentage:.1f}%){Style.RESET_ALL}")
-            return False
-            
-        # Check length ratio
-        length_ratio = len(optimized) / len(original)
-        if length_ratio < 0.8 or length_ratio > 1.5:
-            print(f"{Fore.RED}Length ratio out of bounds: {length_ratio:.2f}{Style.RESET_ALL}")
-            return False
-        
-        return True
-
-    def _create_optimization_prompt(self, project: Dict, relevant_skills: Dict) -> str:
-        """Create a prompt for more focused optimization."""
         return f"""
-        Optimize this project description for a job application:
-        "{project.get('description', '')}"
-        
-        Requirements:
-        1. Keep the same technical achievements and metrics
-        2. Highlight these relevant skills: {', '.join(relevant_skills.get('technical_skills', []))}
-        3. Use appropriate terminology from: {', '.join(relevant_skills.get('domain_knowledge', []))}
-        4. Maintain similar length and structure
-        5. Focus on emphasizing relevant experience without adding new claims
-        
+        Original project description: {original_description}
+
+        This is optimization attempt {attempt} of 3. Create a variation that maintains technical accuracy.
+        Context: You are writing for technical recruiters who are experts in:
+        - {domain_knowledge}
+        - {technologies}
+
+        Technical Requirements:
+        1. NEVER modify technical metrics or performance numbers
+        2. NEVER claim capabilities beyond what the mentioned tools can do
+        3. Respect the actual capabilities and limitations of:
+        - Each programming language mentioned
+        - Each simulation tool referenced
+        - Each technical framework used
+
+        Permitted Modifications:
+        1. Use industry-standard terminology for existing elements
+        2. Clarify technical processes that are implicit
+        3. Highlight relevant aspects without changing facts
+        4. Adjust emphasis while maintaining technical truth
+
+        Forbidden Changes:
+        1. DO NOT modify performance metrics
+        2. DO NOT change the core technical approach
+        3. DO NOT exaggerate tool capabilities
+
         Example of good optimization:
-        Original: "Built a control system using Python"
-        Good: "Developed control system software in Python, implementing feedback loops for system monitoring"
-        
-        Return ONLY the optimized description.
+        Original: "Used ANSYS for thermal simulation"
+        Good: "Validated thermal system behavior using ANSYS's thermal-fluid dynamics modules"
+        Bad: "Used ANSYS for real-time control" (incorrect - not its primary purpose)
+
+        When mentioning specific tools ({technologies}):
+        - Stick to their actual intended use cases
+        - Use proper technical terminology
+        - Respect tool limitations
+        - Maintain technical credibility
+
+        Return ONLY the optimized description. Prioritize technical accuracy over keyword matching.
         """
 
 
+    def _calculate_similarity_score(
+        self, 
+        original: str, 
+        alternative: str, 
+        relevant_skills: Dict
+    ) -> float:
+        """Calculate similarity score between original and alternative descriptions."""
+        # Calculate basic metrics
+        original_words = set(original.lower().split())
+        alternative_words = set(alternative.lower().split())
+        
+        # Word retention rate
+        retained_words = len(original_words.intersection(alternative_words))
+        retention_rate = retained_words / len(original_words)
+        
+        # Length ratio
+        length_ratio = len(alternative) / len(original)
+        length_penalty = 1.0 if 0.8 <= length_ratio <= 1.5 else 0.5
+        
+        # Keyword inclusion
+        keywords = set(relevant_skills.get('technical_skills', []) + 
+                      relevant_skills.get('technologies', []))
+        keyword_score = sum(1 for keyword in keywords 
+                           if keyword.lower() in alternative.lower()) / max(len(keywords), 1)
+        
+        # Calculate final score
+        score = (
+            (retention_rate * 0.4) +      # 40% weight on content retention
+            (length_penalty * 0.3) +      # 30% weight on length
+            (keyword_score * 0.3)         # 30% weight on keywords
+        )
+        
+        print(f"{Fore.CYAN}Similarity Metrics:{Style.RESET_ALL}")
+        print(f"Content Retention: {retention_rate:.2f}")
+        print(f"Length Ratio: {length_ratio:.2f}")
+        print(f"Keyword Score: {keyword_score:.2f}")
+        print(f"Final Score: {score:.2f}")
+        
+        return score
+
+    def _select_best_alternative(
+        self, 
+        original: str,
+        alternatives: List[Dict],
+        relevant_skills: Dict
+    ) -> Optional[Dict]:
+        """Select the best alternative based on scores and comparison."""
+        print(f"\n{Fore.CYAN}Comparing Alternatives:{Style.RESET_ALL}")
+        
+        # Sort by similarity score
+        sorted_alternatives = sorted(
+            alternatives,
+            key=lambda x: x['similarity_score'],
+            reverse=True
+        )
+        
+        # Print all alternatives with scores
+        for i, alt in enumerate(sorted_alternatives):
+            print(f"\n{Fore.YELLOW}Alternative {i+1} (Score: {alt['similarity_score']:.2f}):{Style.RESET_ALL}")
+            print(alt['description'])
+        
+        # Select best alternative if it meets threshold
+        best_alternative = sorted_alternatives[0]
+        if best_alternative['similarity_score'] >= 0.7:
+            print(f"\n{Fore.GREEN}Selected Best Alternative (Score: {best_alternative['similarity_score']:.2f}):{Style.RESET_ALL}")
+            print(best_alternative['description'])
+            return best_alternative
+        
+        return None
 
     def _save_results(
         self,
@@ -234,7 +268,7 @@ class DescriptionOptimizer:
         relevant_skills: Dict,
         ranked_projects: List[Dict]
     ) -> None:
-        """Save complete optimization results to JSON."""
+        """Save optimization results to JSON."""
         try:
             output_file = output_dir / 'optimization_results.json'
             with open(output_file, 'w', encoding='utf-8') as f:
@@ -249,34 +283,36 @@ class DescriptionOptimizer:
             print(f"{Fore.RED}Error saving results: {str(e)}{Style.RESET_ALL}")
 
     def _save_cv_descriptions(self, output_dir: Path, optimized_projects: List[Dict]) -> None:
-        """Save CV-ready descriptions in both JSON and TXT formats."""
+        """Save CV-ready descriptions with all alternatives."""
         try:
             # Save as JSON
             cv_json_file = output_dir / 'cv_descriptions.json'
             cv_descriptions = {
                 project['title']: {
-                    'description': project['description'],
-                    'original': project['original_description'],
-                    'changes_made': self._highlight_changes(
-                        project['original_description'], 
-                        project['description']
-                    )
+                    'selected_description': project['description'],
+                    'original_description': project['original_description'],
+                    'similarity_score': project.get('similarity_score', 0),
+                    'relevance_score': project.get('relevance_score', 0)
                 }
                 for project in optimized_projects
             }
+            
             with open(cv_json_file, 'w', encoding='utf-8') as f:
                 json.dump(cv_descriptions, f, indent=2, ensure_ascii=False)
             
-            # Save as TXT (more CV-friendly format)
+            # Save as TXT
             cv_txt_file = output_dir / 'cv_descriptions.txt'
             with open(cv_txt_file, 'w', encoding='utf-8') as f:
                 for project in optimized_projects:
                     f.write(f"Project: {project['title']}\n")
                     f.write("-" * 50 + "\n")
-                    f.write("Original:\n")
+                    f.write("Original Description:\n")
                     f.write(f"{project['original_description']}\n\n")
-                    f.write("Optimized:\n")
+                    f.write("Optimized Description:\n")
                     f.write(f"{project['description']}\n")
+                    if 'similarity_score' in project:
+                        f.write(f"\nSimilarity Score: {project['similarity_score']:.2f}")
+                    f.write(f"\nRelevance Score: {project['relevance_score']}\n")
                     f.write("\n" + "=" * 50 + "\n\n")
             
             print(f"{Fore.GREEN}CV-ready descriptions saved to:{Style.RESET_ALL}")
@@ -286,15 +322,11 @@ class DescriptionOptimizer:
         except Exception as e:
             print(f"{Fore.RED}Error saving CV descriptions: {str(e)}{Style.RESET_ALL}")
 
-    def _highlight_changes(self, original: str, modified: str) -> Dict[str, List[str]]:
-        """Identify and list the changes made to the description."""
-        return {
-            "modifications": [
-                f"Changed: '{orig}' → '{mod}'"
-                for orig, mod in zip(original.split(), modified.split())
-                if orig != mod
-            ]
-        }
+    def _extract_position_name(self, job_title: str) -> str:
+        """Extract and clean position name for folder naming."""
+        # Remove special characters and spaces
+        clean_name = ''.join(c.lower() for c in job_title if c.isalnum() or c in [' ', '_', '-'])
+        return clean_name.replace(' ', '_')
 
     def _print_debug_info(self, original_projects: List[Dict], ranked_projects: List[Dict]) -> None:
         """Print debug information about the projects."""
