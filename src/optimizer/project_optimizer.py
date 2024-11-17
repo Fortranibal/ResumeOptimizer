@@ -14,44 +14,98 @@ class ProjectOptimizer:
         self.skills = FileLoader.load_skills(Path('input/skills.json'))
 
     def extract_relevant_skills(self, job_description: str) -> Dict[str, Union[List[Dict], Dict[str, List[str]]]]:
-        """Extract relevant skills from job description"""
+        """Extract unique and relevant skills from job description"""
         try:
             prompt = f"""
             Analyze this job description and extract relevant skills and requirements.
+            Rules:
+            1. Remove any duplicate skills (even if phrased differently)
+            2. Combine similar skills into a single, most professional term
+            3. Only include skills that are explicitly mentioned or clearly implied
+            4. Use standardized industry terminology
+            5. List skills in order of importance/relevance
+            6. Ensure each skill appears in only one category
+            
             Return the response in the following JSON format ONLY:
             {{
-                "technical_skills": ["skill1", "skill2", ...],
-                "domain_knowledge": ["domain1", "domain2", ...],
-                "technologies": ["tech1", "tech2", ...],
-                "soft_skills": ["soft1", "soft2", ...]
+                "technical_skills": [
+                    // Core technical competencies required for the role
+                    // No duplicates across categories
+                ],
+                "domain_knowledge": [
+                    // Specific industry/domain expertise
+                    // Distinct from technical skills
+                ],
+                "technologies": [
+                    // Specific tools, platforms, and software
+                    // Use official/standard names
+                ],
+                "soft_skills": [
+                    // Professional and interpersonal skills
+                    // Only include explicitly mentioned ones
+                ]
             }}
+
+            Categorization Rules:
+            - Technical Skills: Specific technical abilities and methodologies
+            - Domain Knowledge: Industry-specific knowledge and concepts
+            - Technologies: Concrete tools, platforms, and software
+            - Soft Skills: Professional and interpersonal capabilities
+
+            Examples:
+            - If "Python programming" and "Python development" are mentioned, use only "Python"
+            - If "thermal analysis" and "thermal simulation" appear, choose the more comprehensive term
+            - Place "MATLAB" in technologies, not in technical_skills
+            - Don't duplicate "system engineering" between technical_skills and domain_knowledge
 
             Job Description:
             {job_description}
             """
             
             response = self.client.chat.completions.create(
-                model="gpt-4-turbo",
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.4,
+                model="gpt-4",
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "You are a technical skills analyzer that ensures unique, relevant, and properly categorized skills extraction. Avoid any duplicates across categories."
+                    },
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.4,  # Low temperature for consistency
             )
             
-            # Get the response content
             content = response.choices[0].message.content.strip()
-            
-            # Debug print
             print(f"\nGPT Response:\n{content}")
             
+            # Parse and validate the response
             try:
-                # Try to parse the JSON response
-                parsed_skills = json.loads(content)
+                skills_dict = json.loads(content)
                 
-                # Validate the required keys
-                required_keys = ['technical_skills', 'domain_knowledge', 'technologies', 'soft_skills']
-                if not all(key in parsed_skills for key in required_keys):
-                    raise ValueError("Missing required keys in response")
+                # Validate and clean the response
+                cleaned_dict = {
+                    category: list(set(skills))  # Remove any duplicates within categories
+                    for category, skills in skills_dict.items()
+                }
                 
-                return parsed_skills
+                # Check for duplicates across categories
+                all_skills = []
+                duplicates = []
+                for category, skills in cleaned_dict.items():
+                    for skill in skills:
+                        if skill.lower() in [s.lower() for s in all_skills]:
+                            duplicates.append(skill)
+                        all_skills.append(skill)
+                
+                if duplicates:
+                    print(f"\n{Fore.YELLOW}Warning: Found duplicate skills across categories: {duplicates}{Style.RESET_ALL}")
+                
+                # Validate required categories
+                required_categories = ['technical_skills', 'domain_knowledge', 'technologies', 'soft_skills']
+                for category in required_categories:
+                    if category not in cleaned_dict:
+                        cleaned_dict[category] = []
+                
+                return cleaned_dict
                 
             except json.JSONDecodeError as e:
                 print(f"JSON parsing error: {str(e)}")

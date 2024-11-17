@@ -27,7 +27,7 @@ class DescriptionOptimizer:
         try:
             # Create job-specific output directory
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            position_name = self._extract_position_name(relevant_skills.get('job_title', 'job_application'))
+            position_name = self._extract_position_name(job_description)
             output_dir = Path(f'output/{timestamp}_{position_name}')
             output_dir.mkdir(parents=True, exist_ok=True)
             
@@ -94,7 +94,7 @@ class DescriptionOptimizer:
                         {"role": "system", "content": "You are a technical resume optimizer that makes subtle but effective improvements to project descriptions."},
                         {"role": "user", "content": self._create_optimization_prompt(original_description, relevant_skills, i+1)}
                     ],
-                    temperature=0.3 + (i * 0.1),  # Slightly increase variation for each attempt
+                    temperature=0.7 + (i * 0.1),  # Slightly increase variation for each attempt
                 )
                 
                 alternative = response.choices[0].message.content.strip()
@@ -270,7 +270,7 @@ class DescriptionOptimizer:
     ) -> None:
         """Save optimization results to JSON."""
         try:
-            output_file = output_dir / 'optimization_results.json'
+            output_file = output_dir / 'general_summary.json'
             with open(output_file, 'w', encoding='utf-8') as f:
                 json.dump({
                     'timestamp': datetime.now().isoformat(),
@@ -286,7 +286,7 @@ class DescriptionOptimizer:
         """Save CV-ready descriptions with all alternatives."""
         try:
             # Save as JSON
-            cv_json_file = output_dir / 'cv_descriptions.json'
+            cv_json_file = output_dir / 'optimized_projects.json'
             cv_descriptions = {
                 project['title']: {
                     'selected_description': project['description'],
@@ -301,7 +301,7 @@ class DescriptionOptimizer:
                 json.dump(cv_descriptions, f, indent=2, ensure_ascii=False)
             
             # Save as TXT
-            cv_txt_file = output_dir / 'cv_descriptions.txt'
+            cv_txt_file = output_dir / 'optimized_projects.txt'
             with open(cv_txt_file, 'w', encoding='utf-8') as f:
                 for project in optimized_projects:
                     f.write(f"Project: {project['title']}\n")
@@ -322,11 +322,31 @@ class DescriptionOptimizer:
         except Exception as e:
             print(f"{Fore.RED}Error saving CV descriptions: {str(e)}{Style.RESET_ALL}")
 
-    def _extract_position_name(self, job_title: str) -> str:
-        """Extract and clean position name for folder naming."""
-        # Remove special characters and spaces
-        clean_name = ''.join(c.lower() for c in job_title if c.isalnum() or c in [' ', '_', '-'])
-        return clean_name.replace(' ', '_')
+    def _extract_position_name(self, job_description: str) -> str:
+        """
+        Extract a clean position name from the job description for folder naming.
+        """
+        try:
+            # Extract the first line which typically contains the job title
+            first_line = job_description.split('\n')[0].strip()
+            
+            # Clean the position name for folder use
+            position_name = first_line.lower()
+            position_name = position_name.replace('(m/f)', '').replace('(f/m)', '')  # Remove gender indicators
+            position_name = ''.join(c if c.isalnum() or c in [' ', '_', '-'] else '_' for c in position_name)
+            position_name = position_name.replace(' ', '_')
+            position_name = '_'.join(filter(None, position_name.split('_')))  # Remove empty parts
+            
+            # If the result is too long, take the first few meaningful parts
+            if len(position_name) > 50:
+                parts = position_name.split('_')
+                position_name = '_'.join(parts[:4])  # Take first 4 parts
+            
+            return position_name if position_name else "job_application"
+            
+        except Exception as e:
+            print(f"{Fore.YELLOW}Warning: Could not extract position name: {str(e)}{Style.RESET_ALL}")
+            return "job_application"  # fallback name
 
     def _print_debug_info(self, original_projects: List[Dict], ranked_projects: List[Dict]) -> None:
         """Print debug information about the projects."""
